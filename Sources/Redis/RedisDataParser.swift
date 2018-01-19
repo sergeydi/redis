@@ -20,7 +20,7 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
     typealias Output = RedisData
     
     /// The in-progress parsing value
-    var processing: PartialRedisData?
+    var processing: ParsingRedisData?
     
     /// The upstream providing byte buffers
     var upstream: ConnectionContext?
@@ -133,7 +133,7 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
         
         // Instantiate the integer
         guard let number = Int(string) else {
-            throw RedisError(.parsingError)
+            throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
         }
         
         return number
@@ -143,33 +143,33 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
     ///
     /// - throws: On an unexpected result
     /// - returns: The value (and if it's completely parsed) as a tuple, or `nil` if more data is needed to continue
-    fileprivate func parseToken(_ token: UInt8, from input: ByteBuffer, at position: inout Int) throws -> PartialRedisData {
+    fileprivate func parseToken(_ token: UInt8, from input: ByteBuffer, at position: inout Int) throws -> ParsingRedisData {
         switch token {
         case .plus:
             // Simple string
             guard let string = simpleString(from: input, at: &position) else {
-                throw RedisError(.parsingError)
+                throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
             }
             
             return .parsed(.basicString(string))
         case .hyphen:
             // Error
             guard let string = simpleString(from: input, at: &position) else {
-                throw RedisError(.parsingError)
+                throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
             }
             
-            return .parsed(.error(RedisError(.serverSide(string))))
+            return .parsed(.error(RedisError(identifier: "serverSide", reason: string)))
         case .colon:
             // Integer
             guard let number = try integer(from: input, at: &position) else {
-                throw RedisError(.parsingError)
+                throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
             }
             
             return .parsed(.integer(number))
         case .dollar:
             // Bulk strings start with their length
             guard let size = try integer(from: input, at: &position) else {
-                throw RedisError(.parsingError)
+                throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
             }
             
             // Negative bulk strings are `null`
@@ -182,7 +182,7 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
                 size > -1,
                 size < input.distance(from: position, to: input.endIndex)
             else {
-                throw RedisError(.parsingError)
+                throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
             }
             
             let endPosition = input.index(position, offsetBy: size)
@@ -195,14 +195,14 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
         case .asterisk:
             // Arrays start with their element count
             guard let size = try integer(from: input, at: &position) else {
-                throw RedisError(.parsingError)
+                throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
             }
             
             guard size >= 0 else {
-                throw RedisError(.parsingError)
+                throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
             }
             
-            var array = [PartialRedisData](repeating: .notYetParsed, count: size)
+            var array = [ParsingRedisData](repeating: .notYetParsed, count: size)
             
             // Parse all elements
             for index in 0..<size {
@@ -221,7 +221,7 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
             
             let values = try array.map { value -> RedisData in
                 guard case .parsed(let value) = value else {
-                    throw RedisError(.parsingError)
+                    throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
                 }
                 
                 return value
@@ -230,11 +230,11 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
             // All elements have been parsed, return the complete array
             return .parsed(.array(values))
         default:
-            throw RedisError(.invalidTypeToken)
+            throw RedisError(identifier: "invalidTypeToken", reason: "Unexpected error while parsing RedisData.")
         }
     }
     
-    fileprivate func continueParsing(partial value: inout PartialRedisData, from input: ByteBuffer, at offset: inout Int) throws -> Bool {
+    fileprivate func continueParsing(partial value: inout ParsingRedisData, from input: ByteBuffer, at offset: inout Int) throws -> Bool {
         // Parses every `notyetParsed`
         switch value {
         case .parsed(_):
@@ -263,7 +263,7 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
             
             let values = try values.map { value -> RedisData in
                 guard case .parsed(let value) = value else {
-                    throw RedisError(.parsingError)
+                    throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
                 }
                 
                 return value
@@ -287,7 +287,7 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
             return
         }
         
-        var value: PartialRedisData
+        var value: ParsingRedisData
         
         // Continues parsing while there are still pending requests
         repeat {
@@ -299,7 +299,7 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
             
             if try continueParsing(partial: &value, from: parsing, at: &parsedBytes) {
                 guard case .parsed(let value) = value else {
-                    throw RedisError(.parsingError)
+                    throw RedisError(identifier: "parsingError", reason: "Unexpected error while parsing RedisData.")
                 }
                 
                 self.processing = nil
@@ -319,12 +319,12 @@ internal final class RedisDataParser: Async.Stream, ConnectionContext {
 }
 
 /// A parsing-in-progress Redis value
-indirect enum PartialRedisData {
+indirect enum ParsingRedisData {
     /// Placeholder for values in arrays
     case notYetParsed
     
     /// An array that's being parsed
-    case parsing([PartialRedisData])
+    case parsing([ParsingRedisData])
     
     /// A correctly parsed value
     case parsed(RedisData)

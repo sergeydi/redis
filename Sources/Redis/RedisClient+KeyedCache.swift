@@ -6,16 +6,20 @@ extension RedisClient: KeyedCache {
     public func get<D>(_ type: D.Type, forKey key: String) throws -> Future<D?>
         where D: Decodable
     {
-        return self.get(forKey: key)
+        /// FIXME: handle nil
+        return get(forKey: key).map(to: D?.self) { data in
+            return try RedisDataDecoder().decode(from: data)
+        }
     }
 
     /// See `KeyedCache.set(_:forKey)`
     public func set(_ entity: Encodable, forKey key: String) throws -> Future<Void> {
-        <#code#>
+        let data = try RedisDataEncoder().encode(entity)
+        return set(data, forKey: key).transform(to: ())
     }
 
     /// See `KeyedCache.remove`
     public func remove(_ key: String) throws -> Future<Void> {
-        <#code#>
+        return delete(keys: [key]).transform(to: ())
     }
 }
