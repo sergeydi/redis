@@ -19,6 +19,9 @@ let package = Package(
 
         // Core services for creating database integrations.
         .package(url: "https://github.com/vapor/database-kit.git", .branch("beta")),
+
+        // Pure Swift (POSIX) TCP and UDP non-blocking socket layer, with event-driven Server and Client.
+        .package(url: "https://github.com/vapor/sockets.git", .branch("beta")),
     ],
     targets: [
         .target(name: "Redis", dependencies: ["Async", "Bits", "DatabaseKit", "Debugging", "TCP"]),

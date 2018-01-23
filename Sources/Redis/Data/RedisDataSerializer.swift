@@ -13,9 +13,6 @@ internal final class RedisDataSerializer: Async.Stream {
     /// Use a basic output stream to implement server output stream.
     private var downstream: AnyInputStream<ByteBuffer>?
 
-    /// The upstream output stream supplying redis data
-    private var upstream: ConnectionContext?
-
     private var lastMessage: Data?
 
     /// Creates a new ValueSerializer
@@ -26,15 +23,12 @@ internal final class RedisDataSerializer: Async.Stream {
         switch event {
         case .close: downstream?.close()
         case .error(let error): downstream?.error(error)
-        case .connect(let upstream):
-            self.upstream = upstream
-            downstream?.connect(to: upstream)
-        case .next(let input):
+        case .next(let input, let ready):
             let data = input.serialize()
             lastMessage = data
             // FIXME: More performant serialization?
             data.withByteBuffer { buffer in
-                self.downstream?.next(buffer)
+                self.downstream?.next(buffer, ready)
             }
         }
     }
@@ -42,7 +36,6 @@ internal final class RedisDataSerializer: Async.Stream {
     /// See OutputStream.output
     func output<S>(to inputStream: S) where S: Async.InputStream, Output == S.Input {
         downstream = AnyInputStream(inputStream)
-        upstream.flatMap(inputStream.connect)
     }
 }
 
@@ -55,7 +48,7 @@ extension RedisData {
         switch self.storage {
         case .null:
             return nullData
-        case .basicString(let string):
+        case .simpleString(let string):
             return Data(("+" + string).utf8)
         case .error(let error):
             return Data(("-" + error.reason).utf8)

@@ -5,7 +5,7 @@ public struct RedisData {
     /// Internal storage abstraction
     indirect enum Storage {
         case null
-        case basicString(String)
+        case simpleString(String)
         case bulkString(Data)
         case error(RedisError)
         case integer(Int)
@@ -26,8 +26,8 @@ public struct RedisData {
     }
     
     /// Creates a BasicString. Used for command names and basic responses
-    public static func basicString(_ string: String) -> RedisData {
-        return RedisData(storage: .basicString(string))
+    public static func simpleString(_ string: String) -> RedisData {
+        return RedisData(storage: .simpleString(string))
     }
     
     /// Creates a textual bulk string, or a "normal" String
@@ -61,7 +61,7 @@ public struct RedisData {
     /// Extracts the basic/bulk string as a `String`.
     public var string: String? {
         switch self.storage {
-        case .basicString(let string):
+        case .simpleString(let string):
             return string
         case .bulkString(let data):
             return String(bytes: data, encoding: .utf8)
