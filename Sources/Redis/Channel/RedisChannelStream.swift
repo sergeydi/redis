@@ -15,7 +15,9 @@ public final class RedisChannelStream: OutputStream {
     internal init<SourceStream>(source: SourceStream)
         where SourceStream: OutputStream, SourceStream.Output == ByteBuffer
     {
-        stream = source.stream(to: RedisDataParser()).map(to: RedisChannelData.self) { data in
+        stream = source.map(to: ByteScanner.self) { buffer in
+            return ByteScanner(buffer)
+        }.stream(to: RedisDataParser().stream()).map(to: RedisChannelData.self) { data in
             guard let arr = data.array, arr.count == 3 else {
                 throw RedisError(identifier: "unexpectedResult", reason: "Unexpected result while subscribing: \(data)")
             }

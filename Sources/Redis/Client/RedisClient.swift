@@ -12,9 +12,12 @@ public final class RedisClient {
         let queueStream = QueueStream<RedisData, RedisData>()
 
         let serializerStream = RedisDataSerializer()
-        let parserStream = RedisDataParser()
+        let parserStream = RedisDataParser().stream()
 
-        stream.stream(to: parserStream)
+        stream.map(to: ByteScanner.self) { buffer in
+                return ByteScanner(buffer)
+            }
+            .stream(to: parserStream)
             .stream(to: queueStream)
             .stream(to: serializerStream)
             .output(to: stream)

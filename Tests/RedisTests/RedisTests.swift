@@ -5,6 +5,27 @@ import TCP
 import XCTest
 
 class RedisTests: XCTestCase {
+    func testParser() throws {
+        let parserStream = RedisDataParser().stream()
+
+        let socket = PushStream(String.self)
+        socket.map(to: ByteScanner.self) { string in
+            let data =  string.data(using: .utf8)!
+            return ByteScanner(data.withByteBuffer { $0 })
+        }
+        .stream(to: parserStream)
+        .drain { data in
+            print(data)
+        }.catch { error in
+            XCTFail("\(error)")
+        }.finally {
+            print("closed")
+        }
+
+        let simpleString = "+OK\r\n+OK\r\n+Hello, world!\r\n"
+        socket.push(simpleString)
+    }
+
     func testCRUD() throws {
         let eventLoop = try DefaultEventLoop(label: "codes.vapor.redis.test.crud")
         let redis = try RedisClient.connect(on: eventLoop)

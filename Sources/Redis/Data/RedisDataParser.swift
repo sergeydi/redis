@@ -2,60 +2,7 @@ import Async
 import Bits
 import Foundation
 
-struct ByteScanner {
-    private var buffer: ByteBuffer
-    private var offset: Int
 
-    var count: Int {
-        return buffer.count - offset
-    }
-
-    mutating func pop() -> Byte? {
-        defer { offset += 1 }
-        return peek()
-    }
-
-    mutating func peek() -> Byte? {
-        guard offset < count else {
-            return nil
-        }
-        return self[0]
-    }
-
-    mutating func skip(count: Int) {
-        offset += count
-    }
-
-    mutating func requirePop() throws -> Byte {
-        guard let pop = self.pop() else {
-            fatalError() // FIXME
-        }
-        return pop
-    }
-
-    mutating func consume(count: Int) -> ByteBuffer? {
-        guard count + offset < buffer.count else {
-            return nil
-        }
-
-        defer { offset += count }
-        return ByteBuffer(
-            start: buffer.baseAddress?.advanced(by: offset + count),
-            count: count
-        )
-    }
-
-    mutating func requireConsume(count: Int) throws -> ByteBuffer {
-        guard let buffer = consume(count: count) else {
-            fatalError()
-        }
-        return buffer
-    }
-
-    subscript(_ index: Int) -> Byte {
-        return buffer[offset + index]
-    }
-}
 
 /// Translates `ByteBuffer`s to `RedisData`.
 internal final class RedisDataParser: TranslatingStream {
@@ -76,15 +23,19 @@ internal final class RedisDataParser: TranslatingStream {
             return .insufficient(next)
         }
 
+
         var bytes = next
+        print(bytes)
         switch try bytes.requirePop() {
         case .asterisk: fatalError()
         case .plus:
+            print(bytes)
             guard let string = try bytes.extractSimpleString() else {
                 return .insufficient(next)
             }
 
             let redisString = RedisData.simpleString(string)
+            print(bytes)
             switch bytes.count {
             case 0: return .sufficient(redisString)
             default: return .excess(redisString, bytes)
@@ -105,9 +56,11 @@ extension ByteScanner {
         }
 
         for i in 1..<count {
-            if buffer[i - 1] == .carriageReturn && buffer[i] == .newLine {
+            if self[i - 1] == .carriageReturn && self[i] == .newLine {
                 defer { skip(count: 2) }
-                return try String(bytes: requireConsume(count: i - 1), encoding: .utf8)
+                let string = try String(bytes: requireConsume(count: i - 1), encoding: .utf8)
+                print(self)
+                return string
             }
         }
 
