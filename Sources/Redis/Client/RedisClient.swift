@@ -1,7 +1,7 @@
 import NIO
 
 /// A Redis client.
-public final class RedisClient: DatabaseConnection, BasicWorker {
+public final class RedisClient: DatabaseConnection, BasicWorker, RedisConnectionDelegate {
     public typealias Database = RedisDatabase
     
     /// See `BasicWorker`.
@@ -15,30 +15,47 @@ public final class RedisClient: DatabaseConnection, BasicWorker {
     /// See `Extendable`.
     public var extend: Extend
 
-    /// Handles enqueued redis commands and responses.
-    internal let queue: QueueHandler<RedisData, RedisData>
-
     /// The channel
     private let channel: Channel
-
-    /// Currently executing `send(...)` promise.
-    private var currentSend: Promise<Void>?
+    
+    private enum State {
+        case ready
+        case waiting(Promise<RedisData>)
+    }
+    
+    private var state: State
 
     /// Creates a new Redis client on the provided data source and sink.
-    init(queue: QueueHandler<RedisData, RedisData>, channel: Channel) {
-        self.queue = queue
+    init(channel: Channel) {
         self.channel = channel
         self.extend = [:]
         self.isClosed = false
+        self.state = .ready
         channel.closeFuture.always {
             self.isClosed = true
-            self.currentSend?.fail(error: closeError)
+            switch self.state {
+            case .ready: break
+            case .waiting(let promise): promise.fail(error: closeError)
+            }
+        }
+    }
+    
+    /// See `RedisConnectionDelegate`.
+    func redisHandle(_ redisData: RedisData) {
+        switch state {
+        case .ready: fatalError("Unexpected redis data: \(redisData).")
+        case .waiting(let promise): promise.succeed(result: redisData)
+        }
+    }
+    
+    /// See `RedisConnectionDelegate`.
+    func redisHandle(_ error: Error) {
+        switch state {
+        case .ready: fatalError("Unexpected redis error: \(error).")
+        case .waiting(let promise): promise.fail(error: error)
         }
     }
 
-    /// Runs a Value as a command
-    ///
-    /// [Learn More →](https://docs.vapor.codes/3.0/redis/custom-commands/#usage)
     public func command(_ command: String, _ arguments: [RedisData] = []) -> Future<RedisData> {
         return send(.array([.bulkString(command)] + arguments)).map(to: RedisData.self) { res in
             // convert redis errors to a Future error
@@ -51,34 +68,38 @@ public final class RedisClient: DatabaseConnection, BasicWorker {
 
     /// Sends `RedisData` to the server.
     public func send(_ data: RedisData) -> Future<RedisData> {
-        var dataArr = [RedisData]()
-        return send([data]) { dataArr.append($0) }
-            .map(to: RedisData.self) { dataArr.first!}
+        return send([data])
     }
 
-    private func send(_ messages: [RedisData], onResponse: @escaping (RedisData) throws -> Void) -> Future<Void> {
-        // if currentSend is not nil, previous send has not completed
-        assert(currentSend == nil, "Attempting to call `send(...)` again before previous invocation has completed.")
-
+    public func send(_ messages: [RedisData]) -> Future<RedisData> {
         // ensure the connection is not closed
         guard !isClosed else {
             return eventLoop.newFailedFuture(error: closeError)
         }
+        
+        // if currentSend is not nil, previous send has not completed
+        guard case .ready = state else {
+            fatalError("Attempting to call `send(...)` again before previous invocation has completed.")
+        }
 
         // create a new promise and store it
-        let promise = eventLoop.newPromise(Void.self)
-        currentSend = promise
+        let promise = eventLoop.newPromise(RedisData.self)
+        state = .waiting(promise)
+        
+        // always reset state when promise is completed
+        promise.futureResult.always {
+            self.state = .ready
+        }
 
-        // cascade this enqueue to the newly created promise
-        queue.enqueue(messages) { message in
-            try onResponse(message)
-            return true // redis is kind of one piece of redis data at time
-        }.cascade(promise: promise)
+        // write message then flush
+        for message in messages {
+            channel.write(message).catch { error in
+                promise.fail(error: error)
+            }
+        }
+        channel.flush()
 
-        // when the promise completes, remove the reference to it
-        promise.futureResult.always { self.currentSend = nil }
-
-        // return the promise's future result (same as `queue.enqueue`)
+        // return the promise's future result
         return promise.futureResult
     }
 
