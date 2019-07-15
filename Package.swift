@@ -9,7 +9,7 @@ let package = Package(
             targets: ["Redbird"])
     ],
 	dependencies: [
-		.package(url: "https://github.com/vapor/socks.git", from: "1.2.7")
+		.package(url: "https://github.com/sergeydi/sockets.git", .branch("1.2.8"))
 	],
 	targets: [
 		.target(name: "Redbird", dependencies: ["Socks"])
