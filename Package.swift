@@ -1,15 +1,17 @@
+// swift-tools-version:4.0
 import PackageDescription
 
 let package = Package(
 	name: "Redbird",
-	targets: [
-		Target(name: "Redbird"),
-		// Target(name: "RedbirdExample", dependencies: ["Redbird"])
-	],
+	products: [
+      .library(
+            name: "Redbird",
+            targets: ["Redbird"])
+    ],
 	dependencies: [
-		.Package(url: "https://github.com/vapor/socks.git", majorVersion: 1)
+		.package(url: "https://github.com/vapor/socks.git", from: "1.2.7")
 	],
-	exclude: [
-        "Sources/RedbirdExample"
+	targets: [
+		.target(name: "Redbird", dependencies: ["Socks"])
 	]
 )
